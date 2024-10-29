@@ -22,9 +22,9 @@ func main() {
 
 	// Erstelle Build-Konfigurationen für jede Plattform
 	buildConfigs := []BuildConfig{
-		{"windows", "amd64", outputName + ".exe", "build/windows"},
-		{"linux", "amd64", outputName, "build/linux"},
-		{"darwin", "amd64", outputName, "build/macos"},
+		{"windows", "amd64", outputName + ".exe", "windows"},
+		{"linux", "amd64", outputName, "linux"},
+		{"darwin", "amd64", outputName, "macos"},
 	}
 
 	// Baue das Programm für jede Konfiguration
