@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 )
@@ -58,15 +59,16 @@ type Service struct {
 	Labels        map[string]string `yaml:"labels,omitempty"`
 }
 
+// convertToCompose konvertiert ContainerInfo in ComposeFile-Format
 func convertToCompose(container ContainerInfo) ComposeFile {
 	// Container-Name ohne den führenden Slash
-	containerName := container.Name[1:]
+	containerName := strings.TrimPrefix(container.Name, "/")
 
 	// Port-Mappings
 	var portMappings []string
-	for hostPort, bindings := range container.HostConfig.PortBindings {
+	for containerPort, bindings := range container.HostConfig.PortBindings {
 		for _, binding := range bindings {
-			portMappings = append(portMappings, fmt.Sprintf("%s:%s", binding.HostPort, hostPort))
+			portMappings = append(portMappings, fmt.Sprintf("%s:%s", binding.HostPort, containerPort))
 		}
 	}
 
@@ -94,12 +96,12 @@ func convertToCompose(container ContainerInfo) ComposeFile {
 
 func main() {
 	// Kommandozeilenargumente definieren
-	containerName := flag.String("container", "", "Name des Docker-Containers (muss mit / beginnen)")
+	containerName := flag.String("container", "", "Name des Docker-Containers (optional mit führendem /)")
 	outputFile := flag.String("output", "docker-compose.yml", "Pfad zur Ausgabedatei")
 
 	// Hilfetext zur Verwendung von Flaggen
 	flag.Usage = func() {
-		fmt.Println("Verwendung: myprogram --container /container_name --output output_file")
+		fmt.Println("Verwendung: myprogram --container container_name --output output_file")
 		fmt.Println("Flags:")
 		flag.PrintDefaults()
 	}
@@ -107,11 +109,16 @@ func main() {
 	// Argumente parsen
 	flag.Parse()
 
-	// Wenn die Hilfe angefordert wird, zeige sie an
+	// Wenn kein Container-Name angegeben ist, zeige Fehlermeldung an
 	if *containerName == "" {
 		fmt.Println("Fehler: Container-Name muss angegeben werden.")
 		flag.Usage()
 		os.Exit(1)
+	}
+
+	// Sicherstellen, dass der Container-Name mit "/" beginnt
+	if (*containerName)[0] != '/' {
+		*containerName = "/" + *containerName
 	}
 
 	// Docker-Inspect-Befehl ausführen
