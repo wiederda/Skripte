@@ -1,8 +1,8 @@
 RUN Python<br>
 docker inspect <container_name> | python docker-compose-converter.py - > docker-compose.yml
-br>
+<br>
 or
-<br>>
+<br>
 docker inspect <container_name> | python3 docker-compose-converter.py - > docker-compose.yml
 <br><br>
 RUN GO<br>
