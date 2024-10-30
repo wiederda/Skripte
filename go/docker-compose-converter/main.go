@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -100,8 +101,13 @@ func main() {
 	outputFile := flag.String("output", "docker-compose.yml", "Pfad zur Ausgabedatei")
 
 	// Hilfetext zur Verwendung von Flaggen
+	executableName := "docker-compose-converter" // Default name for Linux and macOS
+	if runtime.GOOS == "windows" {
+		executableName += ".exe" // Append .exe for Windows
+	}
+
 	flag.Usage = func() {
-		fmt.Println("Verwendung: myprogram --container container_name --output output_file")
+		fmt.Printf("Verwendung: %s --container container_name --output output_file\n", executableName)
 		fmt.Println("Flags:")
 		flag.PrintDefaults()
 	}
