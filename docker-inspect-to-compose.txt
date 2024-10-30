@@ -1,3 +1,0 @@
-docker inspect <container_name> | python docker-inspect-to-compose.py - > docker-compose.yml
-or
-docker inspect <container_name> | python3 docker-inspect-to-compose.py - > docker-compose.yml
