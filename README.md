@@ -7,4 +7,5 @@
        ./docker-compose-converter --container my-container --output docker-compose.yml
 
     *cryptdecrypt*
-       ./cryptdecrypt crypt oder decrypt -password -text   
+       ./cryptdecrypt -mode crypt -password -text   
+       ./cryptdecrypt -mode decrypt -password -text salt:ciphertext
