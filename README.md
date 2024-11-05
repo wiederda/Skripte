@@ -9,7 +9,7 @@
 ##### docker-compose-converter
 
 ` ./docker-compose-converter -container my-container -output docker-compose.yml `
-optional, on Docker Host, only used if input file is not provided
+##### optional, on Docker Host, only used if input file is not provided
 
 ` ./docker-compose-converter -input -output `
 
