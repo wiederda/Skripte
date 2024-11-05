@@ -9,7 +9,7 @@
 ##### docker-compose-converter
 
 ##### -container string
-   #####     Name of the Docker container (optional, only used if input file is not provided)
+   #####     Name or ID of the Docker container (optional, only used if input file is not provided)
 ##### -input string
    #####     Path to the input YAML file with container information
 ##### -output string
