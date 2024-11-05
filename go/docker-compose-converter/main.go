@@ -13,44 +13,44 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// ContainerInfo repräsentiert die Struktur der Docker-Containerinformationen
+// ContainerInfo represents the structure of Docker container information
 type ContainerInfo struct {
-	Name       string          `json:"Name"`
-	Config     ContainerConfig `json:"Config"`
-	HostConfig HostConfig      `json:"HostConfig"`
-	Mounts     []Mount         `json:"Mounts"`
+	Name       string          `json:"Name" yaml:"Name"`
+	Config     ContainerConfig `json:"Config" yaml:"Config"`
+	HostConfig HostConfig      `json:"HostConfig" yaml:"HostConfig"`
+	Mounts     []Mount         `json:"Mounts" yaml:"Mounts"`
 }
 
-// ContainerConfig enthält Konfigurationsinformationen für den Container
+// ContainerConfig contains configuration information for the container
 type ContainerConfig struct {
-	Image  string            `json:"Image"`
-	Labels map[string]string `json:"Labels"`
-	Env    []string          `json:"Env"`
+	Image  string            `json:"Image" yaml:"Image"`
+	Labels map[string]string `json:"Labels" yaml:"Labels"`
+	Env    []string          `json:"Env" yaml:"Env"`
 }
 
-// HostConfig enthält Host-spezifische Konfigurationen
+// HostConfig contains host-specific configurations
 type HostConfig struct {
-	PortBindings map[string][]PortBinding `json:"PortBindings"`
+	PortBindings map[string][]PortBinding `json:"PortBindings" yaml:"PortBindings"`
 }
 
-// PortBinding beschreibt die Portbindung zwischen Host und Container
+// PortBinding describes the port binding between host and container
 type PortBinding struct {
-	HostPort string `json:"HostPort"`
+	HostPort string `json:"HostPort" yaml:"HostPort"`
 }
 
-// Mount beschreibt die Volumes, die im Container verwendet werden
+// Mount describes the volumes used in the container
 type Mount struct {
-	Source      string `json:"Source"`
-	Destination string `json:"Destination"`
+	Source      string `json:"Source" yaml:"Source"`
+	Destination string `json:"Destination" yaml:"Destination"`
 }
 
-// ComposeFile repräsentiert die Struktur für die Docker Compose-Datei
+// ComposeFile represents the structure for the Docker Compose file
 type ComposeFile struct {
 	Version  string             `yaml:"version"`
 	Services map[string]Service `yaml:"services"`
 }
 
-// Service beschreibt einen einzelnen Service in der Docker Compose-Datei
+// Service describes a single service in the Docker Compose file
 type Service struct {
 	Image         string            `yaml:"image"`
 	ContainerName string            `yaml:"container_name"`
@@ -60,12 +60,12 @@ type Service struct {
 	Labels        map[string]string `yaml:"labels,omitempty"`
 }
 
-// convertToCompose konvertiert ContainerInfo in ComposeFile-Format
+// convertToCompose converts ContainerInfo to ComposeFile format
 func convertToCompose(container ContainerInfo) ComposeFile {
-	// Container-Name ohne den führenden Slash
+	// Container name without the leading slash
 	containerName := strings.TrimPrefix(container.Name, "/")
 
-	// Port-Mappings
+	// Port mappings
 	var portMappings []string
 	for containerPort, bindings := range container.HostConfig.PortBindings {
 		for _, binding := range bindings {
@@ -73,13 +73,13 @@ func convertToCompose(container ContainerInfo) ComposeFile {
 		}
 	}
 
-	// Volume-Mappings
+	// Volume mappings
 	var volumeMappings []string
 	for _, mount := range container.Mounts {
 		volumeMappings = append(volumeMappings, fmt.Sprintf("%s:%s", mount.Source, mount.Destination))
 	}
 
-	// Docker Compose-Struktur aufbauen
+	// Build Docker Compose structure
 	return ComposeFile{
 		Version: "3",
 		Services: map[string]Service{
@@ -96,75 +96,92 @@ func convertToCompose(container ContainerInfo) ComposeFile {
 }
 
 func main() {
-	// Kommandozeilenargumente definieren
-	containerName := flag.String("container", "", "Name des Docker-Containers (optional mit führendem /)")
-	outputFile := flag.String("output", "docker-compose.yml", "Pfad zur Ausgabedatei")
+	// Define command-line flags
+	inputFile := flag.String("input", "", "Path to the input YAML file with container information")
+	outputFile := flag.String("output", "docker-compose.yml", "Path to the output Docker Compose file")
+	containerName := flag.String("container", "", "Name of the Docker container (optional, only used if input file is not provided)")
 
-	// Hilfetext zur Verwendung von Flaggen
+	// Usage message for flags
 	executableName := "docker-compose-converter" // Default name for Linux and macOS
 	if runtime.GOOS == "windows" {
 		executableName += ".exe" // Append .exe for Windows
 	}
 
 	flag.Usage = func() {
-		fmt.Printf("Verwendung: %s -container container_name -output output_file\n", executableName)
+		fmt.Printf("Usage: %s -input input_file -output output_file\n", executableName)
 		fmt.Println("Flags:")
 		flag.PrintDefaults()
 	}
 
-	// Argumente parsen
+	// Parse arguments
 	flag.Parse()
 
-	// Wenn kein Container-Name angegeben ist, zeige Fehlermeldung an
-	if *containerName == "" {
-		fmt.Println("Fehler: Container-Name muss angegeben werden.")
+	// Check for input method: file or Docker inspect
+	var containerInfos []ContainerInfo
+
+	if *inputFile != "" {
+		// Read container information from input YAML file
+		data, err := ioutil.ReadFile(*inputFile)
+		if err != nil {
+			fmt.Printf("Error reading input file: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Unmarshal YAML data
+		if err := yaml.Unmarshal(data, &containerInfos); err != nil {
+			fmt.Printf("Error parsing input YAML data: %v\n", err)
+			os.Exit(1)
+		}
+
+	} else if *containerName != "" {
+		// Ensure container name starts with "/"
+		if (*containerName)[0] != '/' {
+			*containerName = "/" + *containerName
+		}
+
+		// Check if Docker is installed
+		if _, err := exec.LookPath("docker"); err != nil {
+			fmt.Println("Error: Docker is not installed or not in PATH.")
+			os.Exit(1)
+		}
+
+		// Execute Docker Inspect command
+		jsonData, err := exec.Command("docker", "inspect", *containerName).Output()
+		if err != nil {
+			fmt.Printf("Error executing Docker command: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Unmarshal JSON data into ContainerInfo structure
+		if err := json.Unmarshal(jsonData, &containerInfos); err != nil {
+			fmt.Printf("Error parsing JSON data: %v\n", err)
+			os.Exit(1)
+		}
+
+	} else {
+		fmt.Println("Error: Either -input file or -container name must be provided.")
 		flag.Usage()
 		os.Exit(1)
 	}
 
-	// Sicherstellen, dass der Container-Name mit "/" beginnt
-	if (*containerName)[0] != '/' {
-		*containerName = "/" + *containerName
-	}
-
-	// Prüfen, ob Docker installiert ist
-	if _, err := exec.LookPath("docker"); err != nil {
-		fmt.Println("Fehler: Docker ist nicht installiert oder nicht im PATH verfügbar.")
-		os.Exit(1)
-	}
-
-	// Docker-Inspect-Befehl ausführen
-	jsonData, err := exec.Command("docker", "inspect", *containerName).Output()
-	if err != nil {
-		fmt.Printf("Fehler beim Ausführen des Docker-Befehls: %v\n", err)
-		os.Exit(1)
-	}
-
-	// JSON-Daten in ContainerInfo-Struktur umwandeln
-	var containerInfos []ContainerInfo
-	if err := json.Unmarshal(jsonData, &containerInfos); err != nil {
-		fmt.Printf("Fehler beim Parsen der JSON-Daten: %v\n", err)
-		os.Exit(1)
-	}
-
-	// Nur den ersten Container nehmen
+	// Process only the first container (for simplicity)
 	container := containerInfos[0]
 
-	// In Docker Compose umwandeln
+	// Convert to Docker Compose format
 	compose := convertToCompose(container)
 
-	// YAML-Output generieren
+	// Generate YAML output
 	output, err := yaml.Marshal(compose)
 	if err != nil {
-		fmt.Printf("Fehler beim Marshaling der YAML-Daten: %v\n", err)
+		fmt.Printf("Error marshaling YAML data: %v\n", err)
 		os.Exit(1)
 	}
 
-	// In die Ausgabedatei schreiben
+	// Write to output file
 	if err := ioutil.WriteFile(*outputFile, output, 0644); err != nil {
-		fmt.Printf("Fehler beim Schreiben in die Ausgabedatei: %v\n", err)
+		fmt.Printf("Error writing to output file: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Docker Compose-Datei erfolgreich in %s geschrieben.\n", *outputFile)
+	fmt.Printf("Docker Compose file successfully written to %s\n", *outputFile)
 }
