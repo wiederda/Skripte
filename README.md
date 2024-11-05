@@ -8,7 +8,7 @@
 
 ##### docker-compose-converter
 
-` ./docker-compose-converter --container my-container --output docker-compose.yml `
+` ./docker-compose-converter -container my-container -output docker-compose.yml `
 
 ##### cryptdecrypt
  `./cryptdecrypt -mode crypt -password -text ` <br>
