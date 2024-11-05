@@ -8,8 +8,15 @@
 
 ##### docker-compose-converter
 
+##### -container string
+   #####     Name of the Docker container (optional, only used if input file is not provided)
+##### -input string
+   #####     Path to the input YAML file with container information
+##### -output string
+   #####     Path to the output Docker Compose file (default "docker-compose.yml")
+
 ` ./docker-compose-converter -container my-container -output docker-compose.yml `
-##### optional, on Docker Host, only used if input file is not provided
+
 
 ` ./docker-compose-converter -input -output `
 
