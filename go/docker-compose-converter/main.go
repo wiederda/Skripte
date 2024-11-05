@@ -107,7 +107,7 @@ func main() {
 	}
 
 	flag.Usage = func() {
-		fmt.Printf("Verwendung: %s --container container_name --output output_file\n", executableName)
+		fmt.Printf("Verwendung: %s -container container_name -output output_file\n", executableName)
 		fmt.Println("Flags:")
 		flag.PrintDefaults()
 	}
@@ -125,6 +125,12 @@ func main() {
 	// Sicherstellen, dass der Container-Name mit "/" beginnt
 	if (*containerName)[0] != '/' {
 		*containerName = "/" + *containerName
+	}
+
+	// Prüfen, ob Docker installiert ist
+	if _, err := exec.LookPath("docker"); err != nil {
+		fmt.Println("Fehler: Docker ist nicht installiert oder nicht im PATH verfügbar.")
+		os.Exit(1)
 	}
 
 	// Docker-Inspect-Befehl ausführen
