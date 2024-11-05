@@ -1,3 +1,0 @@
-CommonName=example.com
-Organization=Example Inc
-Country=DE
