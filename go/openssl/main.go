@@ -61,7 +61,7 @@ func main() {
 	// Werte aus der Konfiguration abrufen oder Standardwerte setzen
 	keySize, err := strconv.Atoi(config["default_bits"])
 	if err != nil {
-		keySize = 2048 // Standardwert, falls default_bits fehlt oder ungültig ist
+		keySize = 4096 // Standardwert, falls default_bits fehlt oder ungültig ist
 	}
 	fmt.Printf("Schlüssellänge: %d\n", keySize)
 
