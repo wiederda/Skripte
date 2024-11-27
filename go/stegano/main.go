@@ -10,6 +10,31 @@ import (
 	"strings"
 )
 
+// Function to display help
+func displayHelp() {
+	fmt.Println("Usage:")
+	fmt.Println("  go run main.go <action> [arguments...]")
+	fmt.Println()
+	fmt.Println("Actions:")
+	fmt.Println("  encode <input_image.png> <message> <output_image.png>")
+	fmt.Println("      Encodes the given message into the specified image and saves it.")
+	fmt.Println()
+	fmt.Println("  decode <input_image.png>")
+	fmt.Println("      Decodes and prints the hidden message from the specified image.")
+	fmt.Println()
+	fmt.Println("Options:")
+	fmt.Println("  --help")
+	fmt.Println("      Displays this help message.")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  Encode a message:")
+	fmt.Println("      go run main.go encode input.png \"Hidden message\" output.png")
+	fmt.Println()
+	fmt.Println("  Decode a message:")
+	fmt.Println("      go run main.go decode output.png")
+	fmt.Println()
+}
+
 // Function to encode a message into an image
 func encodeImage(imagePath, message, outputPath string) error {
 	// Open the image file
@@ -20,56 +45,43 @@ func encodeImage(imagePath, message, outputPath string) error {
 	defer imgFile.Close()
 
 	// Decode the image
-	img, _, err := image.Decode(imgFile)
+	srcImg, _, err := image.Decode(imgFile)
 	if err != nil {
 		return fmt.Errorf("unable to decode image: %v", err)
 	}
 
+	// Ensure the image is in RGBA format
+	bounds := srcImg.Bounds()
+	img := image.NewRGBA(bounds)
+	draw.Draw(img, bounds, srcImg, image.Point{}, draw.Src)
+
 	// Convert the message into a binary string
 	binaryMessage := stringToBinary(message) + "11111111" // Add delimiter (end marker)
 
-	// Get the image bounds and prepare to modify the image
-	bounds := img.Bounds()
-	width, height := bounds.Max.X, bounds.Max.Y
-	pixels := img.(*image.RGBA)
-
+	// Embed the binary message
 	dataIndex := 0
+	for y := bounds.Min.Y; y < bounds.Max.Y && dataIndex < len(binaryMessage); y++ {
+		for x := bounds.Min.X; x < bounds.Max.X && dataIndex < len(binaryMessage); x++ {
+			// Get current pixel
+			r, g, b, a := img.At(x, y).RGBA()
+			r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
 
-	// Iterate over every pixel to embed the message
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			// Get the pixel color
-			r, g, b, a := pixels.RGBAAt(x, y).R, pixels.RGBAAt(x, y).G, pixels.RGBAAt(x, y).B, pixels.RGBAAt(x, y).A
-
-			// Embed message bits into the LSB of R, G, B channels
+			// Embed bits into the LSBs of R, G, B channels
 			if dataIndex < len(binaryMessage) {
-				// Modify the Red channel
-				r = (r & 0xFE) | binaryMessage[dataIndex] - '0'
+				r8 = (r8 & 0xFE) | (binaryMessage[dataIndex] - '0')
 				dataIndex++
-
-				// Modify the Green channel
-				if dataIndex < len(binaryMessage) {
-					g = (g & 0xFE) | binaryMessage[dataIndex] - '0'
-					dataIndex++
-				}
-
-				// Modify the Blue channel
-				if dataIndex < len(binaryMessage) {
-					b = (b & 0xFE) | binaryMessage[dataIndex] - '0'
-					dataIndex++
-				}
+			}
+			if dataIndex < len(binaryMessage) {
+				g8 = (g8 & 0xFE) | (binaryMessage[dataIndex] - '0')
+				dataIndex++
+			}
+			if dataIndex < len(binaryMessage) {
+				b8 = (b8 & 0xFE) | (binaryMessage[dataIndex] - '0')
+				dataIndex++
 			}
 
-			// Set the new pixel color
-			pixels.Set(x, y, color.RGBA{uint8(r), uint8(g), uint8(b), uint8(a)})
-
-			// Stop if the entire message is encoded
-			if dataIndex >= len(binaryMessage) {
-				break
-			}
-		}
-		if dataIndex >= len(binaryMessage) {
-			break
+			// Set modified pixel
+			img.Set(x, y, color.RGBA{r8, g8, b8, uint8(a >> 8)})
 		}
 	}
 
@@ -80,7 +92,6 @@ func encodeImage(imagePath, message, outputPath string) error {
 	}
 	defer outputFile.Close()
 
-	// Encode and save the image
 	err = png.Encode(outputFile, img)
 	if err != nil {
 		return fmt.Errorf("unable to encode image: %v", err)
@@ -88,15 +99,6 @@ func encodeImage(imagePath, message, outputPath string) error {
 
 	fmt.Println("Message encoded and image saved as", outputPath)
 	return nil
-}
-
-// Helper function to convert a string to binary
-func stringToBinary(str string) string {
-	var binaryString strings.Builder
-	for _, char := range str {
-		binaryString.WriteString(fmt.Sprintf("%08b", char))
-	}
-	return binaryString.String()
 }
 
 // Function to decode a message from an image
@@ -109,51 +111,61 @@ func decodeImage(imagePath string) (string, error) {
 	defer imgFile.Close()
 
 	// Decode the image
-	img, _, err := image.Decode(imgFile)
+	srcImg, _, err := image.Decode(imgFile)
 	if err != nil {
 		return "", fmt.Errorf("unable to decode image: %v", err)
 	}
 
-	// Convert the image to RGBA format if it's not already in RGBA format
-	rgbaImg, ok := img.(*image.RGBA)
-	if !ok {
-		// If the image is not in RGBA format, create a new RGBA image and draw the decoded image on it
-		rgbaImg = image.NewRGBA(img.Bounds())
-		draw.Draw(rgbaImg, img.Bounds(), img, image.Point{0, 0}, draw.Over)
-	}
+	// Ensure the image is in RGBA format
+	bounds := srcImg.Bounds()
+	img := image.NewRGBA(bounds)
+	draw.Draw(img, bounds, srcImg, image.Point{}, draw.Src)
 
-	// Initialize variables
-	binaryMessage := ""
-	bounds := rgbaImg.Bounds()
-	width, height := bounds.Max.X, bounds.Max.Y
+	// Extract binary message
+	var binaryMessage strings.Builder
+	delimiter := "11111111"
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
 
-	// Iterate through each pixel and extract the LSBs
-	for y := 0; y < height; y++ {
-		for x := 0; x < width; x++ {
-			pixel := rgbaImg.RGBAAt(x, y)
+			// Append LSBs of R, G, B channels
+			binaryMessage.WriteByte(r8&1 + '0')
+			binaryMessage.WriteByte(g8&1 + '0')
+			binaryMessage.WriteByte(b8&1 + '0')
 
-			// Extract the LSB of each color channel (R, G, B)
-			for i := 0; i < 3; i++ { // R, G, B channels
-				binaryMessage += fmt.Sprintf("%d", pixel.R>>i&1)
+			// Check if delimiter is reached
+			if strings.HasSuffix(binaryMessage.String(), delimiter) {
+				goto EndDecoding
 			}
 		}
 	}
+EndDecoding:
 
-	// Split binary message by the delimiter (the last 8 bits)
-	delimiter := "11111111"
-	messageBits := strings.Split(binaryMessage, delimiter)[0]
+	// Remove the delimiter and convert to text
+	messageBits := binaryMessage.String()
+	messageBits = strings.TrimSuffix(messageBits, delimiter)
 
-	// Convert binary message to text
-	var message string
+	var message strings.Builder
 	for i := 0; i < len(messageBits); i += 8 {
-		// Take 8 bits at a time
+		if i+8 > len(messageBits) {
+			break
+		}
 		byteStr := messageBits[i : i+8]
-		// Convert to ASCII
 		val, _ := binaryToDecimal(byteStr)
-		message += string(rune(val))
+		message.WriteByte(byte(val))
 	}
 
-	return message, nil
+	return message.String(), nil
+}
+
+// Helper function to convert a string to binary
+func stringToBinary(str string) string {
+	var binaryString strings.Builder
+	for _, char := range str {
+		binaryString.WriteString(fmt.Sprintf("%08b", char))
+	}
+	return binaryString.String()
 }
 
 // Helper function to convert binary string to decimal
@@ -167,46 +179,43 @@ func binaryToDecimal(binStr string) (int, error) {
 	return decimalValue, nil
 }
 
-// Main function to accept command-line arguments and call encoding/decoding
+// Main function
 func main() {
-	// Ensure correct number of arguments for encoding or decoding
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: go run main.go <encode|decode> [arguments...]")
+	// Check if the user needs help
+	if len(os.Args) < 2 || os.Args[1] == "--help" {
+		displayHelp()
 		return
 	}
 
+	// Parse the action (encode/decode)
 	action := os.Args[1]
 
 	if action == "encode" {
 		// Encoding
 		if len(os.Args) != 5 {
-			fmt.Println("Usage for encoding: go run main.go encode <input_image.png> <message> <output_image.png>")
+			fmt.Println("Error: Incorrect number of arguments for 'encode'.")
+			fmt.Println("Usage: go run main.go encode <input_image.png> <message> <output_image.png>")
 			return
 		}
-		imagePath := os.Args[2]
-		message := os.Args[3]
-		outputPath := os.Args[4]
-
-		err := encodeImage(imagePath, message, outputPath)
+		err := encodeImage(os.Args[2], os.Args[3], os.Args[4])
 		if err != nil {
 			fmt.Println("Error encoding image:", err)
 		}
 	} else if action == "decode" {
 		// Decoding
 		if len(os.Args) != 3 {
-			fmt.Println("Usage for decoding: go run main.go decode <input_image.png>")
+			fmt.Println("Error: Incorrect number of arguments for 'decode'.")
+			fmt.Println("Usage: go run main.go decode <input_image.png>")
 			return
 		}
-		imagePath := os.Args[2]
-
-		// Decode the hidden message
-		message, err := decodeImage(imagePath)
+		message, err := decodeImage(os.Args[2])
 		if err != nil {
 			fmt.Println("Error decoding image:", err)
 		} else {
 			fmt.Println("Decoded message:", message)
 		}
 	} else {
-		fmt.Println("Unknown action:", action)
+		fmt.Println("Error: Unknown action:", action)
+		fmt.Println("Use '--help' to see available actions.")
 	}
 }
