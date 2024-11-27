@@ -5,22 +5,31 @@ import (
 	"image"
 	"image/color"
 	"image/draw"
+	"image/jpeg"
 	"image/png"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"golang.org/x/image/bmp"
+	_ "golang.org/x/image/bmp" // Import für BMP-Unterstützung
 )
 
-// Function to display help
+// Funktion zur Anzeige der Hilfe
 func displayHelp() {
 	fmt.Println("Usage:")
-	fmt.Println("  go run main.go <action> [arguments...]")
+	fmt.Println("  ./stegano <action> [arguments...]")
 	fmt.Println()
 	fmt.Println("Actions:")
-	fmt.Println("  encode <input_image.png> <message> <output_image.png>")
+	fmt.Println("  encode <input_image> <message> <output_image>")
 	fmt.Println("      Encodes the given message into the specified image and saves it.")
 	fmt.Println()
-	fmt.Println("  decode <input_image.png>")
+	fmt.Println("  decode <input_image>")
 	fmt.Println("      Decodes and prints the hidden message from the specified image.")
+	fmt.Println()
+	fmt.Println("Supported Formats:")
+	fmt.Println("  Input: PNG, BMP, JPG/JPEG")
+	fmt.Println("  Output: PNG, BMP, JPG/JPEG")
 	fmt.Println()
 	fmt.Println("Options:")
 	fmt.Println("  --help")
@@ -28,45 +37,73 @@ func displayHelp() {
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  Encode a message:")
-	fmt.Println("      go run main.go encode input.png \"Hidden message\" output.png")
+	fmt.Println("      ./stegano encode input.jpg \"Hidden message\" output.png")
 	fmt.Println()
 	fmt.Println("  Decode a message:")
-	fmt.Println("      go run main.go decode output.png")
+	fmt.Println("     ./stegano decode output.png")
 	fmt.Println()
 }
 
-// Function to encode a message into an image
+// Funktion zum Speichern des Bildes im richtigen Format
+func saveImage(outputPath string, img image.Image) error {
+	ext := strings.ToLower(filepath.Ext(outputPath))
+	outputFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("unable to create output image file: %v", err)
+	}
+	defer outputFile.Close()
+
+	switch ext {
+	case ".png":
+		err = png.Encode(outputFile, img)
+	case ".jpg", ".jpeg":
+		// JPEG mit Qualität 90 speichern
+		err = jpeg.Encode(outputFile, img, &jpeg.Options{Quality: 90})
+	case ".bmp":
+		// BMP wird durch die go-x-image/bmp unterstützt
+		err = bmp.Encode(outputFile, img)
+	default:
+		return fmt.Errorf("unsupported output format: %s", ext)
+	}
+
+	if err != nil {
+		return fmt.Errorf("unable to encode image: %v", err)
+	}
+	return nil
+}
+
+// Funktion zum Einbetten einer Nachricht in ein Bild
 func encodeImage(imagePath, message, outputPath string) error {
-	// Open the image file
+	// Bilddatei öffnen
 	imgFile, err := os.Open(imagePath)
 	if err != nil {
 		return fmt.Errorf("unable to open image: %v", err)
 	}
 	defer imgFile.Close()
 
-	// Decode the image
-	srcImg, _, err := image.Decode(imgFile)
+	// Bild dekodieren
+	srcImg, format, err := image.Decode(imgFile)
 	if err != nil {
 		return fmt.Errorf("unable to decode image: %v", err)
 	}
+	fmt.Printf("Input image format: %s\n", format)
 
-	// Ensure the image is in RGBA format
+	// In RGBA-Format umwandeln
 	bounds := srcImg.Bounds()
 	img := image.NewRGBA(bounds)
 	draw.Draw(img, bounds, srcImg, image.Point{}, draw.Src)
 
-	// Convert the message into a binary string
-	binaryMessage := stringToBinary(message) + "11111111" // Add delimiter (end marker)
+	// Nachricht in Binärdaten umwandeln
+	binaryMessage := stringToBinary(message) + "11111111" // Delimiter hinzufügen
 
-	// Embed the binary message
+	// Binärnachricht einbetten
 	dataIndex := 0
 	for y := bounds.Min.Y; y < bounds.Max.Y && dataIndex < len(binaryMessage); y++ {
 		for x := bounds.Min.X; x < bounds.Max.X && dataIndex < len(binaryMessage); x++ {
-			// Get current pixel
 			r, g, b, a := img.At(x, y).RGBA()
 			r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
 
-			// Embed bits into the LSBs of R, G, B channels
+			// LSBs ändern
 			if dataIndex < len(binaryMessage) {
 				r8 = (r8 & 0xFE) | (binaryMessage[dataIndex] - '0')
 				dataIndex++
@@ -80,48 +117,42 @@ func encodeImage(imagePath, message, outputPath string) error {
 				dataIndex++
 			}
 
-			// Set modified pixel
+			// Pixel setzen
 			img.Set(x, y, color.RGBA{r8, g8, b8, uint8(a >> 8)})
 		}
 	}
 
-	// Save the modified image
-	outputFile, err := os.Create(outputPath)
+	// Bild speichern
+	err = saveImage(outputPath, img)
 	if err != nil {
-		return fmt.Errorf("unable to create output image file: %v", err)
-	}
-	defer outputFile.Close()
-
-	err = png.Encode(outputFile, img)
-	if err != nil {
-		return fmt.Errorf("unable to encode image: %v", err)
+		return fmt.Errorf("error saving image: %v", err)
 	}
 
 	fmt.Println("Message encoded and image saved as", outputPath)
 	return nil
 }
 
-// Function to decode a message from an image
+// Funktion zum Dekodieren einer Nachricht aus einem Bild
 func decodeImage(imagePath string) (string, error) {
-	// Open the image file
+	// Bilddatei öffnen
 	imgFile, err := os.Open(imagePath)
 	if err != nil {
 		return "", fmt.Errorf("unable to open image: %v", err)
 	}
 	defer imgFile.Close()
 
-	// Decode the image
+	// Bild dekodieren
 	srcImg, _, err := image.Decode(imgFile)
 	if err != nil {
 		return "", fmt.Errorf("unable to decode image: %v", err)
 	}
 
-	// Ensure the image is in RGBA format
+	// In RGBA-Format umwandeln
 	bounds := srcImg.Bounds()
 	img := image.NewRGBA(bounds)
 	draw.Draw(img, bounds, srcImg, image.Point{}, draw.Src)
 
-	// Extract binary message
+	// Binäre Nachricht extrahieren
 	var binaryMessage strings.Builder
 	delimiter := "11111111"
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
@@ -129,12 +160,12 @@ func decodeImage(imagePath string) (string, error) {
 			r, g, b, _ := img.At(x, y).RGBA()
 			r8, g8, b8 := uint8(r>>8), uint8(g>>8), uint8(b>>8)
 
-			// Append LSBs of R, G, B channels
+			// LSBs extrahieren
 			binaryMessage.WriteByte(r8&1 + '0')
 			binaryMessage.WriteByte(g8&1 + '0')
 			binaryMessage.WriteByte(b8&1 + '0')
 
-			// Check if delimiter is reached
+			// Prüfen, ob das Delimiter erreicht ist
 			if strings.HasSuffix(binaryMessage.String(), delimiter) {
 				goto EndDecoding
 			}
@@ -142,10 +173,8 @@ func decodeImage(imagePath string) (string, error) {
 	}
 EndDecoding:
 
-	// Remove the delimiter and convert to text
-	messageBits := binaryMessage.String()
-	messageBits = strings.TrimSuffix(messageBits, delimiter)
-
+	// Delimiter entfernen und Binärdaten in Text umwandeln
+	messageBits := strings.TrimSuffix(binaryMessage.String(), delimiter)
 	var message strings.Builder
 	for i := 0; i < len(messageBits); i += 8 {
 		if i+8 > len(messageBits) {
@@ -159,7 +188,7 @@ EndDecoding:
 	return message.String(), nil
 }
 
-// Helper function to convert a string to binary
+// Hilfsfunktionen
 func stringToBinary(str string) string {
 	var binaryString strings.Builder
 	for _, char := range str {
@@ -168,7 +197,6 @@ func stringToBinary(str string) string {
 	return binaryString.String()
 }
 
-// Helper function to convert binary string to decimal
 func binaryToDecimal(binStr string) (int, error) {
 	var decimalValue int
 	for i, bit := range binStr {
@@ -179,22 +207,19 @@ func binaryToDecimal(binStr string) (int, error) {
 	return decimalValue, nil
 }
 
-// Main function
+// Hauptfunktion
 func main() {
-	// Check if the user needs help
 	if len(os.Args) < 2 || os.Args[1] == "--help" {
 		displayHelp()
 		return
 	}
 
-	// Parse the action (encode/decode)
 	action := os.Args[1]
 
 	if action == "encode" {
-		// Encoding
 		if len(os.Args) != 5 {
 			fmt.Println("Error: Incorrect number of arguments for 'encode'.")
-			fmt.Println("Usage: go run main.go encode <input_image.png> <message> <output_image.png>")
+			fmt.Println("Usage: go run main.go encode <input_image> <message> <output_image>")
 			return
 		}
 		err := encodeImage(os.Args[2], os.Args[3], os.Args[4])
@@ -202,10 +227,9 @@ func main() {
 			fmt.Println("Error encoding image:", err)
 		}
 	} else if action == "decode" {
-		// Decoding
 		if len(os.Args) != 3 {
 			fmt.Println("Error: Incorrect number of arguments for 'decode'.")
-			fmt.Println("Usage: go run main.go decode <input_image.png>")
+			fmt.Println("Usage: go run main.go decode <input_image>")
 			return
 		}
 		message, err := decodeImage(os.Args[2])
